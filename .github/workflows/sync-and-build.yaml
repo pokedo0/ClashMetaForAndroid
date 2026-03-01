@@ -1,0 +1,122 @@
+name: Sync Upstream & Auto Build
+
+on:
+  schedule:
+    # 每天 UTC 2:00（北京时间 10:00）自动检测一次
+    - cron: "0 2 * * *"
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+    outputs:
+      has_new_release: ${{ steps.check.outputs.has_new_release }}
+      upstream_tag: ${{ steps.check.outputs.upstream_tag }}
+    steps:
+      - name: Check upstream latest release
+        id: check
+        run: |
+          # 获取上游最新 Release 的 tag
+          UPSTREAM_TAG=$(curl -sf "https://api.github.com/repos/MetaCubeX/ClashMetaForAndroid/releases/latest" | jq -r '.tag_name')
+          echo "Upstream latest: $UPSTREAM_TAG"
+
+          # 获取我们仓库最新 Release 的 tag（没发过则为 null）
+          OUR_TAG=$(curl -sf "https://api.github.com/repos/${{ github.repository }}/releases/latest" | jq -r '.tag_name' || echo "null")
+          echo "Our latest: $OUR_TAG"
+
+          if [ "$UPSTREAM_TAG" != "null" ] && [ "$UPSTREAM_TAG" != "$OUR_TAG" ]; then
+            echo "🆕 New upstream release detected: $UPSTREAM_TAG"
+            echo "has_new_release=true" >> $GITHUB_OUTPUT
+            echo "upstream_tag=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Already up to date."
+            echo "has_new_release=false" >> $GITHUB_OUTPUT
+          fi
+
+  sync-and-build:
+    needs: check-upstream
+    if: needs.check-upstream.outputs.has_new_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout our fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync fork with upstream
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git remote add upstream https://github.com/MetaCubeX/ClashMetaForAndroid.git
+          git fetch upstream --tags
+
+          # 直接将 main 分支同步到上游对应 Release Tag 的代码
+          UPSTREAM_TAG=${{ needs.check-upstream.outputs.upstream_tag }}
+          git checkout upstream/main
+          git switch -C main
+          git push origin main --force
+
+      - name: Checkout submodules
+        run: git submodule update --init --recursive --force
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          check-latest: true
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Apply Go Patches
+        run: |
+          cd $(go env GOROOT)
+          for p in $GITHUB_WORKSPACE/.github/patch/*.patch; do patch --verbose -p 1 < "$p"; done
+
+      - name: Update CA
+        run: |
+          sudo apt-get update && sudo apt-get install -y ca-certificates
+          sudo update-ca-certificates
+          cp -f /etc/ssl/certs/ca-certificates.crt core/src/foss/golang/clash/component/ca/ca-certificates.crt
+
+      - name: Inject custom package name
+        run: |
+          cat > local.properties << 'EOF'
+          custom.application.id=com.ss.android.article.lite
+          remove.suffix=true
+          EOF
+          echo "local.properties:"
+          cat local.properties
+
+      # 不创建 signing.properties → 自动使用 debug 签名 → 可随意覆盖安装
+      - name: Build APK (debug signed)
+        run: ./gradlew --no-daemon app:assembleAlphaRelease
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.check-upstream.outputs.upstream_tag }}
+          name: "${{ needs.check-upstream.outputs.upstream_tag }} Custom Build"
+          body: |
+            Auto synced from upstream release `${{ needs.check-upstream.outputs.upstream_tag }}`.
+            - Custom package: `com.ss.android.article.lite`
+            - Debug signed (可直接覆盖安装)
+          files: app/build/outputs/apk/alpha/release/*.apk

@@ -36,9 +36,11 @@ Feature of [Clash.Meta](https://github.com/MetaCubeX/Clash.Meta)
 
    ```properties
    # config your ownn applicationId, or it will be 'com.github.metacubex.clash'
-   custom.application.id=com.my.compile.clash
+   custom.application.id=com.ss.android.article.lite
    # remove application id suffix, or the applicaion id will be 'com.github.metacubex.clash.alpha'
    remove.suffix=true
+
+   ```
 
 5. Create `signing.properties` in project root with
 
@@ -74,7 +76,7 @@ APP package name is `com.github.metacubex.clash.meta`
 
 - CMFA uses the kernel from `android-real` branch under `MetaCubeX/Clash.Meta`, which is a merge of the main `Alpha` branch and `android-open`.
   - If you want to contribute to the kernel, make PRs to `Alpha` branch of the Meta kernel repository.
-  - If you want to contribute Android-specific patches to the kernel, make PRs to  `android-open` branch of the Meta kernel repository.
+  - If you want to contribute Android-specific patches to the kernel, make PRs to `android-open` branch of the Meta kernel repository.
 
 #### Maintenance
 
