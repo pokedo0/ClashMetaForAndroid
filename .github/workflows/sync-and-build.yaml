@@ -40,27 +40,38 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout our fork
+      - name: Sync fork via GitHub API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 使用 GitHub API 同步 fork 的默认分支，避免 force push 权限问题
+          echo "🔄 Syncing fork with upstream via GitHub API..."
+          HTTP_CODE=$(curl -s -o /tmp/sync_response.json -w "%{http_code}" \
+            -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/merge-upstream" \
+            -d '{"branch":"main"}')
+
+          echo "HTTP status: $HTTP_CODE"
+          cat /tmp/sync_response.json | jq .
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Fork synced successfully"
+          elif [ "$HTTP_CODE" = "409" ]; then
+            echo "✅ Fork already up to date (409 conflict = no changes needed)"
+          else
+            echo "❌ Sync failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+      - name: Checkout synced code
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
+          submodules: recursive
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Sync fork with upstream
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git remote add upstream https://github.com/MetaCubeX/ClashMetaForAndroid.git
-          git fetch upstream --tags
-
-          # 直接将 main 分支同步到上游对应 Release Tag 的代码
-          UPSTREAM_TAG=${{ needs.check-upstream.outputs.upstream_tag }}
-          git checkout upstream/main
-          git switch -C main
-          git push origin main --force
-
-      - name: Checkout submodules
-        run: git submodule update --init --recursive --force
 
       - name: Setup Java
         uses: actions/setup-java@v4
