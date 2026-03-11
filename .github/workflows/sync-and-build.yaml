@@ -111,14 +111,23 @@ jobs:
       - name: Inject custom package name
         run: |
           cat > local.properties << 'EOF'
-          custom.application.id=com.ss.android.article.news.toutiao
+          custom.application.id=com.toutiao.news.article
           remove.suffix=true
           EOF
           echo "local.properties:"
           cat local.properties
 
-      # 不创建 signing.properties → 自动使用 debug 签名 → 可随意覆盖安装
-      - name: Build APK (debug signed)
+      - name: Setup signing key
+        run: |
+          cat > signing.properties << 'EOF'
+          keystore.path=.github/signing/release.keystore
+          keystore.password=clash123456
+          key.alias=ci-key
+          key.password=clash123456
+          EOF
+          echo "✅ Signing key configured"
+
+      - name: Build APK
         run: ./gradlew --no-daemon app:assembleAlphaRelease
 
       - name: Publish Release
@@ -128,6 +137,6 @@ jobs:
           name: "${{ needs.check-upstream.outputs.upstream_tag }} Custom Build"
           body: |
             Auto synced from upstream release `${{ needs.check-upstream.outputs.upstream_tag }}`.
-            - Custom package: `com.ss.android.article.news.toutiao`
-            - Debug signed (可直接覆盖安装)
+            - Custom package: `com.toutiao.news.article`
+            - 固定签名（可覆盖安装）
           files: app/build/outputs/apk/alpha/release/*.apk
