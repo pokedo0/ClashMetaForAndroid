@@ -119,13 +119,16 @@ jobs:
 
       - name: Setup signing key
         run: |
-          cat > signing.properties << 'EOF'
-          keystore.path=.github/signing/release.keystore
+          cp .github/signing/release.keystore release.keystore
+          cat > signing.properties << 'PROPS'
           keystore.password=clash123456
           key.alias=ci-key
           key.password=clash123456
-          EOF
+          PROPS
+          sed -i 's/^ *//' signing.properties
           echo "✅ Signing key configured"
+          echo "--- signing.properties ---"
+          cat -A signing.properties
 
       - name: Build APK
         run: ./gradlew --no-daemon app:assembleAlphaRelease
