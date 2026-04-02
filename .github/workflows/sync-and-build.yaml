@@ -45,7 +45,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          submodules: recursive
+          submodules: false
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Sync with upstream but keep our workflows
@@ -62,8 +62,11 @@ jobs:
           # 保留自己仓库的 workflow
           git checkout HEAD -- .github/workflows || true
           
+          # 尝试正常更新子模块，如果因为 mihomo Alpha 分支 force-push 找不到 commit，则强制拉取最新远端分支
+          git submodule update --init --recursive || git submodule update --init --recursive --remote
+          
           git add -A
-          git diff --cached --quiet || git commit -m "Sync upstream and keep local workflows"
+          git diff --cached --quiet || git commit -m "Sync upstream and keep local workflows (including submodule fix)"
           git push origin main
 
       - name: Setup Java
