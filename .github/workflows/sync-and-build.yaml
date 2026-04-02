@@ -39,40 +39,32 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      workflows: write
     steps:
-      - name: Sync fork via GitHub API
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # 使用 GitHub API 同步 fork 的默认分支，避免 force push 权限问题
-          echo "🔄 Syncing fork with upstream via GitHub API..."
-          HTTP_CODE=$(curl -s -o /tmp/sync_response.json -w "%{http_code}" \
-            -X POST \
-            -H "Authorization: token $GH_TOKEN" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ github.repository }}/merge-upstream" \
-            -d '{"branch":"main"}')
-
-          echo "HTTP status: $HTTP_CODE"
-          cat /tmp/sync_response.json | jq .
-
-          if [ "$HTTP_CODE" = "200" ]; then
-            echo "✅ Fork synced successfully"
-          elif [ "$HTTP_CODE" = "409" ]; then
-            echo "✅ Fork already up to date (409 conflict = no changes needed)"
-          else
-            echo "❌ Sync failed with HTTP $HTTP_CODE"
-            exit 1
-          fi
-
-      - name: Checkout synced code
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
           submodules: recursive
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync with upstream but keep our workflows
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          git remote add upstream https://github.com/MetaCubeX/ClashMetaForAndroid.git
+          git fetch upstream
+          
+          git checkout main
+          git merge --no-edit upstream/main || true
+          
+          # 保留自己仓库的 workflow
+          git checkout HEAD -- .github/workflows || true
+          
+          git add -A
+          git diff --cached --quiet || git commit -m "Sync upstream and keep local workflows"
+          git push origin main
 
       - name: Setup Java
         uses: actions/setup-java@v4
