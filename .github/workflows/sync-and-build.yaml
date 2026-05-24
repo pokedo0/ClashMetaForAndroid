@@ -1,9 +1,6 @@
 name: Sync Upstream & Auto Build
 
 on:
-  schedule:
-    # 每天 UTC 2:00（北京时间 10:00）自动检测一次
-    - cron: "0 2 * * *"
   workflow_dispatch: # 允许手动触发
 
 jobs:
